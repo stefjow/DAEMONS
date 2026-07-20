@@ -768,7 +768,7 @@ def hunter_pulse(scr, run, bank, ms=90):
 
 def intro_flash(scr, run, bank):
     """Jacking in: the runner's signal locks in — @ blinks 3 times —
-    then the hunters flash once. Here's you; here's them."""
+    then the hunters blink twice. Here's you; here's them."""
     for phase in range(6):
         draw(scr, run, bank)
         if phase % 2 == 0:
@@ -778,7 +778,11 @@ def intro_flash(scr, run, bank):
                        col("loot", curses.A_BOLD | curses.A_REVERSE))
         scr.refresh()
         curses.napms(150)
-    hunter_pulse(scr, run, bank, ms=300)
+    for _ in range(2):
+        hunter_pulse(scr, run, bank, ms=220)
+        draw(scr, run, bank)
+        scr.refresh()
+        curses.napms(120)
     curses.flushinp()   # drop keys mashed during the animation
 
 

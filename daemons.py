@@ -751,8 +751,8 @@ def draw(scr, run, bank):
     scr.refresh()
 
 
-def hunter_pulse(scr, run, bank):
-    """One brief highlight frame after the hunters step, so motion reads."""
+def hunter_pulse(scr, run, bank, ms=90):
+    """One brief highlight frame on the hunters, so they read at a glance."""
     if not run.hunters and not run.killers:
         return
     draw(scr, run, bank)
@@ -763,11 +763,12 @@ def hunter_pulse(scr, run, bank):
         scr.addstr(1 + p[1], 2 + p[0], GLYPH_KILLER,
                    col("threat", curses.A_BOLD | curses.A_REVERSE))
     scr.refresh()
-    curses.napms(90)
+    curses.napms(ms)
 
 
 def intro_flash(scr, run, bank):
-    """Jacking in: the runner's signal locks in — @ blinks 3 times."""
+    """Jacking in: the runner's signal locks in — @ blinks 3 times —
+    then the hunters flash once. Here's you; here's them."""
     for phase in range(6):
         draw(scr, run, bank)
         if phase % 2 == 0:
@@ -777,6 +778,7 @@ def intro_flash(scr, run, bank):
                        col("loot", curses.A_BOLD | curses.A_REVERSE))
         scr.refresh()
         curses.napms(150)
+    hunter_pulse(scr, run, bank, ms=300)
     curses.flushinp()   # drop keys mashed during the animation
 
 

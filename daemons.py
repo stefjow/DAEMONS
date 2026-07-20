@@ -717,7 +717,7 @@ def draw(scr, run, bank):
     if run.decoy:
         put(run.decoy[0], GLYPH_RUNNER, curses.A_DIM)
     for p in run.hunters:
-        put(p, GLYPH_HUNTER)
+        put(p, GLYPH_HUNTER, curses.A_BOLD)
     for p in run.killers:
         put(p, GLYPH_KILLER, col("threat", curses.A_BOLD))
     put(run.player, GLYPH_RUNNER, curses.A_BOLD)
@@ -749,6 +749,21 @@ def draw(scr, run, bank):
                    "move hjkl+zubn/numpad  wait .  scan s  programs p c f e d t"
                    "  quit q", curses.A_DIM)
     scr.refresh()
+
+
+def hunter_pulse(scr, run, bank):
+    """One brief highlight frame after the hunters step, so motion reads."""
+    if not run.hunters and not run.killers:
+        return
+    draw(scr, run, bank)
+    for p in run.hunters:
+        scr.addstr(1 + p[1], 2 + p[0], GLYPH_HUNTER,
+                   col("threat", curses.A_BOLD | curses.A_REVERSE))
+    for p in run.killers:
+        scr.addstr(1 + p[1], 2 + p[0], GLYPH_KILLER,
+                   col("threat", curses.A_BOLD | curses.A_REVERSE))
+    scr.refresh()
+    curses.napms(90)
 
 
 def intro_flash(scr, run, bank):
@@ -875,6 +890,7 @@ def main(scr):
                 run = Run(level=level, loadout=loadout)
                 intro_flash(scr, run, bank)
             continue
+        turn_before = run.turn
         if key in WAIT_KEYS:
             run.act(0, 0)
         elif key == "s":
@@ -907,6 +923,8 @@ def main(scr):
                 run.message = "rm -rf: not rigged / no charge."
         elif key in MOVES:
             run.act(*MOVES[key])
+        if run.turn != turn_before and not run.over:
+            hunter_pulse(scr, run, bank)
 
 
 if __name__ == "__main__":

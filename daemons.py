@@ -751,6 +751,20 @@ def draw(scr, run, bank):
     scr.refresh()
 
 
+def intro_flash(scr, run, bank):
+    """Jacking in: the runner's signal locks in — @ blinks 3 times."""
+    for phase in range(6):
+        draw(scr, run, bank)
+        if phase % 2 == 0:
+            scr.addstr(1 + run.player[1], 2 + run.player[0], " ")
+        else:
+            scr.addstr(1 + run.player[1], 2 + run.player[0], GLYPH_RUNNER,
+                       col("loot", curses.A_BOLD | curses.A_REVERSE))
+        scr.refresh()
+        curses.napms(150)
+    curses.flushinp()   # drop keys mashed during the animation
+
+
 # -- loadout screen ---------------------------------------------------------------
 
 def show_loadout(scr, level, bank, chosen):
@@ -839,6 +853,7 @@ def main(scr):
     if loadout is None:
         return
     run = Run(level=level, loadout=loadout)
+    intro_flash(scr, run, bank)
 
     while True:
         draw(scr, run, bank + (run.carried + run.creds_taken
@@ -858,6 +873,7 @@ def main(scr):
                 if loadout is None:
                     return
                 run = Run(level=level, loadout=loadout)
+                intro_flash(scr, run, bank)
             continue
         if key in WAIT_KEYS:
             run.act(0, 0)

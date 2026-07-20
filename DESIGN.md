@@ -63,8 +63,8 @@ of them should be cut, no matter how cool it is.
 | `#`   | Barrier ICE | Static wall. Shapes the board's funnels and chokepoints. |
 | `S`   | Sentry ICE | Stationary. Fires down its row/column every N turns on a visible rhythm. The shot travels until blocked by `#`, `▒`, or `~`. |
 | `~`   | Static field | Noise sector. Walkable. Blocks sentry lines that pass through it; a runner standing in static can't be hit by sentries at all. |
-| `G`   | Code gate | Door tile. Passable only with the matching breaker program. |
-| `∩`   | Tunnel end | Planted by `tunnel.exe`. Two ends link; stepping on one moves you to the other (both ways). Hunters can't follow. |
+| `G`   | Permission gate | Door tile. Passable only with `sudo`. |
+| `∩`   | Tunnel end | Bound by `socat`. Two ends link; stepping on one moves you to the other (both ways). Hunters can't follow. |
 | `◊`   | Backdoor port | Rare, found only under a `?`. Jack out instantly from mid-board and reveal a secret edge on the city map. |
 | `¤`   | Paydata file | The reason you're here. Pick up by stepping on it. |
 | `$`   | Credits cache | Money for the meta-layer. |
@@ -113,21 +113,22 @@ Each program occupies MU and has limited charges per run. This is the
 "deckbuilding": identical boards play completely differently depending on the
 suite you brought, and bringing the wrong suite hurts.
 
-Starter suite (tune freely):
+Programs are Unix commands, not branded wares — the runner's rig is a
+shell. Starter suite (tune freely):
 
 | Program | MU | Charges | Effect |
 |---------|----|---------|--------|
-| `panic.exe` | 1 | 3 | Random teleport (classic Robots). Cheap, desperate. |
-| `blink.exe` | 2 | 1 | Targeted teleport to a visible tile. |
-| `decoy.exe` | 1 | 2 | Spawns a fake `@` signal; dumb hunters chase it 3 turns. |
-| `emp.exe` | 2 | 1 | Stuns all adjacent entities 1 turn. Loud (+trace). |
-| `crowbar.exe` | 1 | 2 | Smash one adjacent `#` or `▒`. Loud. |
-| `gatekey.exe` | 1 | ∞ | Passes `G` code gates (specific gate families later). |
-| `probe.exe` | 1 | ∞ | Scan an adjacent `?` for free (no turn cost). |
-| `tunnel.exe` | 2 | 2 | Plant a tunnel end `∩` on your tile (1 charge each). Two ends link into a two-way, hunter-proof passage. Using a tunnel is loud (+trace). |
+| `panic` | 1 | 3 | Kernel panic: random teleport (classic Robots). Cheap, desperate. |
+| `ssh` | 2 | 1 | Open a session on any visible tile: targeted teleport. |
+| `fork` | 1 | 2 | Forks a decoy child `@`; dumb hunters chase it 3 turns. |
+| `sigstop` | 2 | 1 | Freezes all adjacent processes 1 turn. Loud (+trace). |
+| `rm -rf` | 1 | 2 | Deletes one adjacent `#` or `▒`. Loud. |
+| `sudo` | 1 | ∞ | Passes `G` permission gates (specific gate families later). |
+| `stat` | 1 | ∞ | Adjacent `?` identified for free (no turn cost). |
+| `socat` | 2 | 2 | Binds a tunnel end `∩` on your tile (1 charge each). Two ends link into a two-way, hunter-proof passage. Travel is loud (+trace). |
 
-The teleport progression is deliberate: `panic.exe` (random, base kit) →
-`tunnel.exe` (fixed, player-authored) → `blink.exe` (targeted, premium).
+The teleport progression is deliberate: `panic` (random, base kit) →
+`socat` (fixed, player-authored) → `ssh` (targeted, premium).
 Determinism gets cheaper the more foresight it demands.
 
 Design rule: **no program removes the need to read the board.** Programs buy
@@ -216,7 +217,7 @@ Keep this thin in v1 — the run loop must be fun naked first.
   and wait). Killers: trace escalation, flickering exit, spawn waves. Verify
   in playtests that waiting is never the best move.
 - **Trace tuning:** too fast → panic slog; too slow → camping returns.
-- **`panic.exe` spam:** random teleport must stay a desperation tool, not a
+- **`panic` spam:** random teleport must stay a desperation tool, not a
   strategy. Charge limits and landing-on-a-hunter risk keep it honest.
 - **Junk-wall fortresses:** herding is the point, but sealing yourself in
   safely forever isn't. `K` hunters pathfind around junk for exactly this

@@ -3,7 +3,7 @@
 
 The v1 milestone from DESIGN.md §7: barrier ICE, sentries + static fields,
 code gates, `?` scanning (with rare backdoors), traps, the starter program
-suite with tunnel.exe, and an MU loadout screen. Runs are seeded and
+suite (Unix commands, not .exes), and an MU loadout screen. Runs are seeded and
 deterministic (§6).
 
 Run:  python3 daemons.py
@@ -15,19 +15,19 @@ Movement (8-directional; z = y for QWERTZ; arrows for the cardinals):
 
 Actions:
       s   scan adjacent `?` tiles (costs a turn; free & automatic with
-          probe.exe equipped)
+          stat equipped)
 Programs (must be equipped, consume charges):
-      p   panic.exe    random teleport — can land you next to, or on,
-                       a hunter; desperation only
-      f   blink.exe    targeted teleport: move the cursor, f/enter to jump,
-                       escape to cancel
-      d   decoy.exe    drop a fake signal on your tile; dumb hunters chase
-                       it 3 turns and crash into it
-      e   emp.exe      stun all adjacent hunters 1 turn (loud)
-      c   crowbar.exe  then a direction: smash an adjacent # or ▒ (loud)
-      t   tunnel.exe   plant a tunnel end; two ends link into a two-way,
-                       hunter-proof passage (travel is loud)
-      gatekey.exe / probe.exe are passive while equipped.
+      p   panic     kernel panic: random teleport — can land you next to,
+                    or on, a hunter; desperation only
+      c   ssh       connect anywhere: move the cursor, c/enter to jump,
+                    escape to cancel
+      f   fork      fork a decoy child on your tile; dumb hunters chase
+                    it 3 turns and crash into it
+      e   sigstop   freeze all adjacent hunter processes 1 turn (loud)
+      d   rm -rf    then a direction: delete an adjacent # or ▒ (loud)
+      t   socat     bind a tunnel end; two ends link into a two-way,
+                    hunter-proof passage (travel is loud)
+      sudo / stat are passive while equipped.
 
       r   continue (after a run ends): next server if you jacked out,
           back to server 1 if you flatlined
@@ -81,16 +81,16 @@ GLYPH_TUNNEL = "∩"
 
 # program name -> (hotkey, MU, charges per run; None = unlimited/passive)
 PROGRAMS = {
-    "panic.exe":   ("p", 1, 3, "random teleport; desperate"),
-    "blink.exe":   ("f", 2, 1, "targeted teleport to any open tile"),
-    "decoy.exe":   ("d", 1, 2, "fake @; dumb hunters chase it 3 turns"),
-    "emp.exe":     ("e", 2, 1, "stun adjacent hunters 1 turn; loud"),
-    "crowbar.exe": ("c", 1, 2, "smash one adjacent # or ▒; loud"),
-    "gatekey.exe": ("g", 1, None, "passive: walk through G code gates"),
-    "probe.exe":   ("o", 1, None, "passive: adjacent ? auto-scanned free"),
-    "tunnel.exe":  ("t", 2, 2, "plant a tunnel end; 2 ends = 2-way passage"),
+    "panic":   ("p", 1, 3, "kernel panic: random teleport; desperate"),
+    "ssh":     ("c", 2, 1, "connect to any open tile: targeted teleport"),
+    "fork":    ("f", 1, 2, "decoy child @; dumb hunters chase it 3 turns"),
+    "sigstop": ("e", 2, 1, "freeze adjacent processes 1 turn; loud"),
+    "rm -rf":  ("d", 1, 2, "delete one adjacent # or ▒; loud"),
+    "sudo":    ("-", 1, None, "passive: walk through G permission gates"),
+    "stat":    ("-", 1, None, "passive: adjacent ? identified free"),
+    "socat":   ("t", 2, 2, "bind a tunnel end; 2 ends = 2-way passage"),
 }
-DEFAULT_LOADOUT = ("panic.exe", "probe.exe", "tunnel.exe")
+DEFAULT_LOADOUT = ("panic", "stat", "socat")
 
 
 def sign(n):
@@ -144,7 +144,7 @@ class Run:
 
         self.wave_size = min(MAX_WAVE, 2 + (level - 1) // 2)
         self.gen_board()
-        self.auto_probe()
+        self.auto_stat()
 
     # -- board generation ----------------------------------------------------
 
@@ -292,7 +292,7 @@ class Run:
             return False
         if pos in {s["pos"] for s in self.sentries}:
             return False
-        if pos in self.gates and not self.has("gatekey.exe"):
+        if pos in self.gates and not self.has("sudo"):
             return False
         return True
 
@@ -317,8 +317,8 @@ class Run:
         """Turns until this sentry fires; 0 = fires on the coming step."""
         return (-(self.turn + sentry["phase"])) % SENTRY_PERIOD
 
-    def auto_probe(self):
-        if not self.has("probe.exe"):
+    def auto_stat(self):
+        if not self.has("stat"):
             return
         for pos in [p for p in self.hidden if cheb(p, self.player) <= 1]:
             self.revealed[pos] = self.hidden.pop(pos)
@@ -341,7 +341,7 @@ class Run:
         nx, ny = self.player[0] + dx, self.player[1] + dy
         if not self.can_enter((nx, ny)):
             if (nx, ny) in self.gates:
-                self.message = "A code gate. You need gatekey.exe."
+                self.message = "Permission denied. You need sudo."
             else:
                 self.message = "Blocked."
             return
@@ -365,98 +365,99 @@ class Run:
     def act_panic(self):
         if self.over:
             return
-        if not self.has("panic.exe"):
-            self.message = "panic.exe: no charges left."
+        if not self.has("panic"):
+            self.message = "panic: no charges left."
             return
-        self.spend("panic.exe")
+        self.spend("panic")
         self.player = self.rng.choice(
             [(x, y) for x in range(BOARD_W) for y in range(BOARD_H)
              if self.can_enter((x, y))])
-        self.message = f"panic.exe fired — {self.loadout['panic.exe']} left."
+        self.message = f"kernel panic — {self.loadout['panic']} left."
         self.resolve("you teleported into a hunter process.", moved=False)
 
-    def act_blink(self, target):
+    def act_ssh(self, target):
         if self.over:
             return
-        if not self.has("blink.exe"):
-            self.message = "blink.exe: no charges left."
+        if not self.has("ssh"):
+            self.message = "ssh: no charges left."
             return
         if (not self.can_enter(target) or target in self.hunters
                 or target in self.killers):
-            self.message = "blink.exe: can't land there."
+            self.message = "ssh: connection refused."
             return
-        self.spend("blink.exe")
+        self.spend("ssh")
         self.player = target
-        self.message = "blink.exe: relocated."
-        self.resolve("blink misfire.", moved=False)
+        self.message = "ssh: session opened."
+        self.resolve("ssh misfire.", moved=False)
 
-    def act_decoy(self):
+    def act_fork(self):
         if self.over:
             return
-        if not self.has("decoy.exe"):
-            self.message = "decoy.exe: no charges left."
+        if not self.has("fork"):
+            self.message = "fork: no charges left."
             return
-        self.spend("decoy.exe")
+        self.spend("fork")
         self.decoy = (self.player, DECOY_TTL)
-        self.message = "decoy.exe: a fake signal blooms on your tile. Move!"
+        self.message = "fork: child process spawned on your tile. Move!"
         self.world_step()
 
-    def act_emp(self):
+    def act_sigstop(self):
         if self.over:
             return
-        if not self.has("emp.exe"):
-            self.message = "emp.exe: no charges left."
+        if not self.has("sigstop"):
+            self.message = "sigstop: no charges left."
             return
-        self.spend("emp.exe")
+        self.spend("sigstop")
         self.stunned = {h for h in self.hunters | self.killers
                         if cheb(h, self.player) <= 1}
         self.trace = min(TRACE_MAX, self.trace + NOISE_EMP)
-        self.message = f"emp.exe: {len(self.stunned)} stunned. Loud."
+        self.message = (f"SIGSTOP sent — {len(self.stunned)} processes "
+                        f"frozen. Loud.")
         self.world_step()
 
-    def act_crowbar(self, dx, dy):
+    def act_rm(self, dx, dy):
         if self.over:
             return
-        if not self.has("crowbar.exe"):
-            self.message = "crowbar.exe: no charges left."
+        if not self.has("rm -rf"):
+            self.message = "rm -rf: no charges left."
             return
         target = (self.player[0] + dx, self.player[1] + dy)
         if target in self.walls and target not in self.vault_shell():
             self.walls.discard(target)
         elif target in self.walls:
-            self.message = "crowbar.exe: vault plating is too hard."
+            self.message = "rm -rf: vault plating is write-protected."
             return
         elif target in self.junk:
             self.junk.discard(target)
         else:
-            self.message = "crowbar.exe: nothing to smash there."
+            self.message = "rm -rf: no such obstacle."
             return
-        self.spend("crowbar.exe")
+        self.spend("rm -rf")
         self.trace = min(TRACE_MAX, self.trace + NOISE_CROWBAR)
-        self.message = "crowbar.exe: smashed. Loud."
+        self.message = "rm -rf: deleted. Loud."
         self.world_step()
 
     def vault_shell(self):
         return {p for p in self.walls
                 if any(cheb(p, v) <= 1 for v in self.vault)}
 
-    def act_tunnel(self):
+    def act_socat(self):
         if self.over:
             return
-        if not self.has("tunnel.exe"):
-            self.message = "tunnel.exe: no charges left."
+        if not self.has("socat"):
+            self.message = "socat: no charges left."
             return
         pos = self.player
         occupied = (pos in self.hidden or pos in self.revealed
                     or pos in self.files or pos == self.exit
                     or pos in self.tunnels or pos in self.gates)
         if occupied:
-            self.message = "tunnel.exe: can't plant here."
+            self.message = "socat: address already in use."
             return
-        self.spend("tunnel.exe")
+        self.spend("socat")
         self.tunnels.append(pos)
         linked = " Link established." if len(self.tunnels) == 2 else ""
-        self.message = f"tunnel.exe: end planted.{linked}"
+        self.message = f"socat: endpoint bound.{linked}"
         self.world_step()
 
     # -- landing on a tile -----------------------------------------------------
@@ -522,7 +523,7 @@ class Run:
             pos, ttl = self.decoy
             self.decoy = (pos, ttl - 1) if ttl > 1 else None
         self.stunned = set()
-        self.auto_probe()
+        self.auto_stat()
 
     def step_hunters(self):
         """Classic Robots rule: every hunter takes one sign-step toward its
@@ -732,8 +733,8 @@ def draw(scr, run, bank):
     rig = []
     for name, charges in run.loadout.items():
         key = PROGRAMS[name][0]
-        label = name.removesuffix(".exe")
-        rig.append(f"{key}:{label}" +
+        prefix = "" if key == "-" else f"{key}:"
+        rig.append(f"{prefix}{name}" +
                    ("" if charges is None else f"×{charges}"))
     scr.addstr(oy + BOARD_H + 2, ox, "RIG  " + "  ".join(rig), curses.A_DIM)
     scr.addstr(oy + BOARD_H + 3, ox, run.message[:BOARD_W + 38])
@@ -745,7 +746,7 @@ def draw(scr, run, bank):
         scr.addstr(oy + BOARD_H + 5, ox, f"{nxt}   [q] quit")
     else:
         scr.addstr(oy + BOARD_H + 4, ox,
-                   "move hjkl+zubn/numpad  wait .  scan s  programs p f d e c t"
+                   "move hjkl+zubn/numpad  wait .  scan s  programs p c f e d t"
                    "  quit q", curses.A_DIM)
     scr.refresh()
 
@@ -769,8 +770,8 @@ def show_loadout(scr, level, bank, chosen):
             attr = curses.A_BOLD if name in chosen else curses.A_DIM
             scr.addstr(4 + i, 2, line, attr)
         row = 5 + len(names)
-        if "panic.exe" not in chosen:
-            scr.addstr(row, 2, "No panic.exe: no escape valve. Your funeral.",
+        if "panic" not in chosen:
+            scr.addstr(row, 2, "No panic: no escape valve. Your funeral.",
                        col("threat"))
             row += 1
         if mu > MU_MAX:
@@ -795,20 +796,20 @@ def show_loadout(scr, level, bank, chosen):
                 chosen.append(name)
 
 
-# -- targeting mode for blink.exe --------------------------------------------------
+# -- targeting mode for ssh --------------------------------------------------
 
 def pick_target(scr, run, bank):
     cursor = run.player
     while True:
         draw(scr, run, bank)
         scr.addstr(1 + BOARD_H + 3, 2,
-                   "blink.exe: move cursor, [f/enter] jump, [esc] cancel",
+                   "ssh: move cursor, [c/enter] connect, [esc] cancel",
                    col("loot", curses.A_BOLD))
         scr.addstr(1 + cursor[1], 2 + cursor[0], "X",
                    col("loot") | curses.A_REVERSE)
         scr.refresh()
         key = scr.get_wch()
-        if key in ("f", "\n", "\r", curses.KEY_ENTER):
+        if key in ("c", "\n", "\r", curses.KEY_ENTER):
             return cursor
         if key == "\x1b" or key == "q":
             return None
@@ -864,30 +865,30 @@ def main(scr):
             run.act_scan()
         elif key == "p":
             run.act_panic()
-        elif key == "d":
-            run.act_decoy()
-        elif key == "e":
-            run.act_emp()
-        elif key == "t":
-            run.act_tunnel()
         elif key == "f":
-            if run.has("blink.exe"):
+            run.act_fork()
+        elif key == "e":
+            run.act_sigstop()
+        elif key == "t":
+            run.act_socat()
+        elif key == "c":
+            if run.has("ssh"):
                 target = pick_target(scr, run, bank)
                 if target:
-                    run.act_blink(target)
+                    run.act_ssh(target)
             else:
-                run.message = "blink.exe: not rigged / no charge."
-        elif key == "c":
-            if run.has("crowbar.exe"):
-                run.message = "crowbar.exe: which direction?"
+                run.message = "ssh: not rigged / no charge."
+        elif key == "d":
+            if run.has("rm -rf"):
+                run.message = "rm -rf: which direction?"
                 draw(scr, run, bank)
                 d = scr.get_wch()
                 if d in MOVES:
-                    run.act_crowbar(*MOVES[d])
+                    run.act_rm(*MOVES[d])
                 else:
-                    run.message = "crowbar.exe: cancelled."
+                    run.message = "rm -rf: cancelled."
             else:
-                run.message = "crowbar.exe: not rigged / no charge."
+                run.message = "rm -rf: not rigged / no charge."
         elif key in MOVES:
             run.act(*MOVES[key])
 

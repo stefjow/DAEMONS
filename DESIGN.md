@@ -70,6 +70,7 @@ of them should be cut, no matter how cool it is.
 | `$`   | Credits cache | Money for the meta-layer. |
 | `☠`   | Trap / snare | Looks like paydata until scanned or triggered. Brain damage. |
 | `⌂`   | Exit port | Step on it to jack out with everything you carry. |
+| `≡`   | Encrypted archive (v2) | Extract by channeling 2 turns in place — visible countdown, hunters keep coming. Loot: credits, warez, patches, charge refills — or a **tarbomb** (junk burst / hunter spawn). Scanning warns. |
 | `?`   | Unscanned entity | Something is here. You don't know what. Scanning costs a turn. Resolves to paydata, credits, a trap — or, rarely, a backdoor `◊`. Scanning is a gamble, not just trap-avoidance. |
 
 ### 3.2 Turn structure
@@ -134,6 +135,31 @@ Determinism gets cheaper the more foresight it demands.
 Design rule: **no program removes the need to read the board.** Programs buy
 you one mistake or one shortcut; geometry is still the game.
 
+### v2 — warez, versions, rig heat
+
+- **Corp signature warez:** each corp develops one program that can only be
+  looted from its own servers (or bought stolen at the repo, §5). Target
+  selection on the city map gains a second axis beyond file count: "this
+  corp is where `sigkill` lives."
+- **Versions, not sprawl:** §9 bans inventory bloat, so most progression is
+  *patches*, not new programs — `fork 1.0` (child lives 3 turns) →
+  `fork 2.0` (4 turns, 3 charges). Patches are found in archives or bought
+  at the repo and applied at the safehouse. Keep the total roster ≤ ~14.
+- **Rig heat:** every MU above 4 adds ~+25% to *all* trace gains. MU is
+  bought, but power is priced in time — a bigger rig runs hotter, and
+  minimal-rig runs stay a legitimate expert style.
+
+Candidate v2 warez (each mechanic-first, tune freely):
+
+| Program | MU | Charges | Effect |
+|---------|----|---------|--------|
+| `mkfifo` | 1 | 1 | Budget socat: two ends, but the pipe is **one-way** (first planted → second). |
+| `nice` | 1 | 2 | Reschedule adjacent hunters: they move only every other turn, for 4 turns. |
+| `sigkill` | 2 | 1 | Delete one adjacent hunter outright. Rare, loud, expensive — ration hard (§8). |
+| `at` | 1 | 2 | Schedule another equipped program's effect N turns in the future (set the sentry-freeze for when you'll be at the vault). |
+| `grep` | 1 | 2 | Mark every `?` on the board that matches a pattern (paydata / not-paydata). |
+| `mount` | 1 | 2 | Drop a junk heap `▒` on an adjacent tile. Instant cover. |
+
 ---
 
 ## 5. The Meta-Layer (between runs)
@@ -146,10 +172,24 @@ Keep this thin in v1 — the run loop must be fun naked first.
   servers you couldn't otherwise reach. The map draws itself as you play.
   Rumor-level intel per node ("high security, 2 files, sentry-heavy").
 - **Corp clock:** each corp advances its flagship project by 1 tick per
-  player run. If any corp completes it → campaign loss. Stealing that corp's
-  files sets it back. This makes ignoring a corp a real cost and gives the
-  campaign a win condition: expose enough stolen files to take the corps down
-  publicly.
+  player run. If any corp completes it → campaign loss. *Publishing* that
+  corp's stolen files sets it back (see publish-or-fence). This makes
+  ignoring a corp a real cost and gives the campaign a win condition:
+  expose enough stolen files to take the corps down publicly.
+- **The repo:** a gray-market node on the city map that isn't a corp — a
+  fixer's package mirror. Buy warez, patches, RAM, and server intel with
+  credits; stock rotates per visit, so you can't always buy your way out.
+- **Publish or fence:** every stolen file is spent one of two ways —
+  *published* (sets back that corp's clock: campaign progress) or *fenced*
+  at the repo (credits for gear). Every credit spent is campaign progress
+  you sold. The meta-layer's greed decision mirrors the board's.
+- **RAM & rig heat:** MU upgrades 4 → 5 → 6 (hard cap), steeply priced —
+  and each MU above 4 makes the runner louder (§4 rig heat). Brain damage
+  (−1 MU) and hardware fight over the same stat: an injured runner with an
+  upgraded deck is back at baseline.
+- **No XP, ever:** progression is capability and information — programs,
+  versions, MU, intel, perception upgrades. The runner never moves faster
+  and hunters never get dumber; the player's real leveling is skill.
 - **Adaptation:** hit the same corp repeatedly and its boards get fortified —
   more sentries, seeded `☠` traps near paydata.
 - **Corp archetypes:** each corp owns one *signature board mechanic*, not
@@ -200,9 +240,11 @@ Keep this thin in v1 — the run loop must be fun naked first.
 2. **v1 — ICE & programs:** barriers, sentries + static fields, code gates,
    `?` scanning (incl. rare backdoors `◊`), traps, the starter program
    suite with `tunnel.exe`, MU loadout screen.
-3. **v2 — Meta-layer:** rhizome city map (self-revealing nodes, secret
-   edges from backdoors), corp clock, corp signature archetypes, credits
-   economy, tagged consequences, brain damage, legacy.
+3. **v2 — Meta-layer:** encrypted archives `≡` and `mkfifo` first (pure
+   run-loop additions, cheapest experiments), then the rhizome city map
+   (self-revealing nodes, secret edges from backdoors), corp clock, the
+   repo, publish-or-fence, RAM & rig heat, versioned warez, corp signature
+   archetypes, tagged consequences, brain damage, legacy.
 4. **v3 — Texture:** display-corruption brain damage + perception upgrades,
    corp adaptation, hunter-killer variety, vortex ICE (pulls runner *and*
    hunters 1 tile per turn within radius 3 — kite the pack into it),
@@ -228,6 +270,14 @@ Keep this thin in v1 — the run loop must be fun naked first.
 - **Third-file math:** the expected value of greed should hover near
   break-even. If taking every file is always right, there's no decision; if
   it's always wrong, there's no temptation.
+- **Credit inflation:** the economy needs sinks (bribing off *tagged*,
+  safehouse repairs, patch prices) or fencing dominates publishing and the
+  campaign clock becomes decoration.
+- **`sigkill` scarcity:** if deleting hunters is ever routine, geometry
+  stops being the game. Price it, ration it, and keep it loud.
+- **Rig heat tuning:** the +MU trace multiplier needs the same care as the
+  base clock — too weak and MU is a pure power buy, too strong and nobody
+  ever upgrades.
 
 ---
 

@@ -6,9 +6,17 @@ the replay tests drive headless.
 """
 
 import curses
+import os
 
 from meta import (Campaign, CORPS, CLOCK_MAX, EXPOSURE_GOAL, FENCE_RATE,
                   INTEL_PRICE)
+
+
+def new_campaign():
+    """Fresh campaign; DAEMONS_BANK=n seeds the bank (dev/testing)."""
+    campaign = Campaign()
+    campaign.bank = int(os.environ.get("DAEMONS_BANK", 0) or 0)
+    return campaign
 from game import (
     Run, dispatch, PROGRAMS, DEFAULT_LOADOUT, MOVES,
     BOARD_W, BOARD_H, TRACE_MAX, MU_MAX,
@@ -422,7 +430,7 @@ def main(scr):
             f"daemons: terminal too small — need at least "
             f"{MIN_COLS}x{MIN_ROWS}, got {cols}x{rows}.")
 
-    campaign = Campaign()
+    campaign = new_campaign()
     chosen = list(DEFAULT_LOADOUT)
     notes = ("The corps build. You leak. Pick a server.",)
     while True:
@@ -444,6 +452,6 @@ def main(scr):
         if campaign.result:
             if not show_finale(scr, campaign, notes):
                 return
-            campaign = Campaign()
+            campaign = new_campaign()
             chosen = list(DEFAULT_LOADOUT)
             notes = ("A new campaign. The corps never sleep.",)

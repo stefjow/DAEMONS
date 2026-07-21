@@ -17,7 +17,10 @@ Run:  python3 daemons.py
 
 Code layout: game.py (rules engine, headless), ice.py (ring content &
 balance), meta.py (campaign: city map, corp clocks, publish-or-fence),
-ui.py (curses), tests/ (mechanics + exact-replay tests).
+rooms.py + rooms/ (authored ring-0 vaults: fully visible, hand-designed,
+solver-verified; dying in one offers a free retry of the room), ui.py
+(curses), tools/room_solver.py (exhaustive room solver for authoring),
+tests/ (mechanics + exact-replay tests).
 
 Movement (8-directional; z = y for QWERTZ; arrows for the cardinals):
       y k u     7 8 9

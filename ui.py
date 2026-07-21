@@ -10,7 +10,7 @@ import curses
 from meta import (Campaign, CORPS, CLOCK_MAX, EXPOSURE_GOAL, FENCE_RATE,
                   INTEL_PRICE)
 from game import (
-    dispatch, PROGRAMS, DEFAULT_LOADOUT, MOVES,
+    Run, dispatch, PROGRAMS, DEFAULT_LOADOUT, MOVES,
     BOARD_W, BOARD_H, TRACE_MAX, MU_MAX,
     GLYPH_RUNNER, GLYPH_HUNTER, GLYPH_KILLER, GLYPH_JUNK, GLYPH_WALL,
     GLYPH_GATE, GLYPH_STATIC, GLYPH_FILE, GLYPH_CRED, GLYPH_TRAP,
@@ -42,15 +42,20 @@ def col(name, extra=0):
     return COLORS.get(name, 0) | extra
 
 
+def org(run):
+    """Screen origin for the board: small authored rooms draw centered."""
+    return (1 + (BOARD_H - run.H) // 2, 2 + (BOARD_W - run.W) // 2)
+
+
 def draw(scr, run, bank):
     scr.erase()
-    oy, ox = 1, 2
+    oy, ox = org(run)
 
     def put(pos, ch, attr=0):
         scr.addstr(oy + pos[1], ox + pos[0], ch, attr)
 
-    for x in range(BOARD_W):
-        for y in range(BOARD_H):
+    for x in range(run.W):
+        for y in range(run.H):
             put((x, y), "·", curses.A_DIM)
     for p in run.static:
         put(p, GLYPH_STATIC, col("static", curses.A_DIM))
@@ -71,6 +76,8 @@ def draw(scr, run, bank):
         put(p, GLYPH_FIFO_IN if i == 0 else GLYPH_FIFO_OUT, curses.A_BOLD)
     for p in run.files:
         put(p, GLYPH_FILE, col("loot", curses.A_BOLD))
+    for p in run.creds_tiles:
+        put(p, GLYPH_CRED, col("loot", curses.A_BOLD))
     for p, kind in run.revealed.items():
         glyph = {"file": GLYPH_FILE, "cred": GLYPH_CRED,
                  "trap": GLYPH_TRAP, "door": GLYPH_DOOR,
@@ -100,6 +107,8 @@ def draw(scr, run, bank):
         put(p, GLYPH_KILLER, col("threat", curses.A_BOLD))
     put(run.player, GLYPH_RUNNER, curses.A_BOLD)
 
+    # HUD rows stay put regardless of room size
+    oy, ox = 1, 2
     bar_w = 20
     filled = run.trace * bar_w // TRACE_MAX
     hud = (f"SRV {run.level} RING {run.ring}   "
@@ -119,8 +128,12 @@ def draw(scr, run, bank):
     if run.over:
         attr = curses.A_BOLD | (0 if run.won else curses.A_REVERSE)
         scr.addstr(oy + BOARD_H + 4, ox, run.over, attr)
-        nxt = ("[space] to the safehouse" if run.won
-               else "[space] back to the city — new runner")
+        if run.won:
+            nxt = "[space] to the safehouse"
+        elif getattr(run, "retry_args", None):
+            nxt = "[r] retry the room   [space] back to the city"
+        else:
+            nxt = "[space] back to the city — new runner"
         scr.addstr(oy + BOARD_H + 5, ox, f"{nxt}   [q] quit")
     elif run.player == run.port:
         # the boot banner: the descend-or-jack-out decision lives here
@@ -138,11 +151,12 @@ def hunter_pulse(scr, run, bank, ms=90):
     if not run.hunters and not run.killers:
         return
     draw(scr, run, bank)
+    oy, ox = org(run)
     for p in run.hunters:
-        scr.addstr(1 + p[1], 2 + p[0], GLYPH_HUNTER,
+        scr.addstr(oy + p[1], ox + p[0], GLYPH_HUNTER,
                    col("threat", curses.A_BOLD | curses.A_REVERSE))
     for p in run.killers:
-        scr.addstr(1 + p[1], 2 + p[0], GLYPH_KILLER,
+        scr.addstr(oy + p[1], ox + p[0], GLYPH_KILLER,
                    col("threat", curses.A_BOLD | curses.A_REVERSE))
     scr.refresh()
     curses.napms(ms)
@@ -151,12 +165,13 @@ def hunter_pulse(scr, run, bank, ms=90):
 def intro_flash(scr, run, bank):
     """Jacking in: the runner's signal locks in — @ blinks 3 times —
     then the hunters blink twice. Here's you; here's them."""
+    oy, ox = org(run)
     for phase in range(6):
         draw(scr, run, bank)
         if phase % 2 == 0:
-            scr.addstr(1 + run.player[1], 2 + run.player[0], " ")
+            scr.addstr(oy + run.player[1], ox + run.player[0], " ")
         else:
-            scr.addstr(1 + run.player[1], 2 + run.player[0], GLYPH_RUNNER,
+            scr.addstr(oy + run.player[1], ox + run.player[0], GLYPH_RUNNER,
                        col("loot", curses.A_BOLD | curses.A_REVERSE))
         scr.refresh()
         curses.napms(150)
@@ -217,12 +232,13 @@ def show_loadout(scr, level, bank, chosen):
 
 def pick_target(scr, run, bank):
     cursor = run.player
+    oy, ox = org(run)
     while True:
         draw(scr, run, bank)
         scr.addstr(1 + BOARD_H + 3, 2,
                    "ssh: move cursor, [c/enter] connect, [esc] cancel",
                    col("loot", curses.A_BOLD))
-        scr.addstr(1 + cursor[1], 2 + cursor[0], "X",
+        scr.addstr(oy + cursor[1], ox + cursor[0], "X",
                    col("loot") | curses.A_REVERSE)
         scr.refresh()
         key = scr.get_wch()
@@ -233,8 +249,8 @@ def pick_target(scr, run, bank):
             return None
         if key in MOVES:
             dx, dy = MOVES[key]
-            cursor = (min(BOARD_W - 1, max(0, cursor[0] + dx)),
-                      min(BOARD_H - 1, max(0, cursor[1] + dy)))
+            cursor = (min(run.W - 1, max(0, cursor[0] + dx)),
+                      min(run.H - 1, max(0, cursor[1] + dy)))
 
 
 MIN_ROWS = BOARD_H + 8
@@ -358,6 +374,13 @@ def play_run(scr, run, campaign):
         if key == "q":
             return None
         if run.over:
+            retry = getattr(run, "retry_args", None)
+            if key == "r" and not run.won and retry:
+                # authored rooms reset like puzzles: same descent state
+                run = Run(**retry)
+                run.retry_args = retry
+                intro_flash(scr, run, campaign.bank)
+                continue
             if key in (" ", "r", "\n", "\r"):
                 return run
             continue

@@ -97,7 +97,7 @@ class Run:
 
     def __init__(self, level=1, ring=1, ice="crond", next_ice=None,
                  loadout=DEFAULT_LOADOUT, charges=None, seed=None,
-                 trace=0, carried=0, creds=0, intel=0):
+                 trace=0, carried=0, creds=0, intel=0, room=None):
         if seed is None:
             seed = random.randrange(10 ** 6)
         self.seed = seed
@@ -105,6 +105,9 @@ class Run:
         self.level = level
         self.ring = ring
         self.ice = ice
+        self.room = room            # authored room (rooms.py), or None
+        self.W = room.w if room else BOARD_W
+        self.H = room.h if room else BOARD_H
         self.spec = ring0_spec(ice) if ring == 0 else None
         if ring > 0 and next_ice is None:
             next_ice = self.rng.choice(sorted(ICE_POOL))
@@ -142,9 +145,36 @@ class Run:
         self.junk = set()
         self.killers = set()
 
+        self.creds_tiles = set()    # visible $ (authored rooms)
+        self.vents = []             # scripted spawn tiles (authored rooms)
+        self._vent_next = 0
+
         self.wave_size = min(MAX_WAVE, 2 + (level - 1) // 2)
-        self.gen_board()
+        if room:
+            self.build_room(room)
+        else:
+            self.gen_board()
         self.auto_stat()
+
+    def build_room(self, room):
+        """An authored room: fully visible, geometry by design (DESIGN
+        §3.1 experiment) — no hidden tiles, reinforcements only via vents."""
+        self.walls = set(room.walls)
+        self.gates = set(room.gates)
+        self.static = set(room.static)
+        self.vault = set()
+        self.sentries = [dict(s) for s in room.sentries]
+        self.files = set(room.files)
+        self.creds_tiles = set(room.creds)
+        self.hidden = {}
+        self.revealed = {}
+        self.archives = {}
+        self.player = room.player
+        self.port = room.port
+        self.hunters = set(room.hunters)
+        self.killers = set(room.killers)
+        self.vents = list(room.vents)
+        self.total_files = self.carried + len(self.files)
 
     # -- board generation ----------------------------------------------------
 
@@ -298,7 +328,7 @@ class Run:
             for dx in (-1, 0, 1):
                 for dy in (-1, 0, 1):
                     p = (x + dx, y + dy)
-                    if (0 <= p[0] < BOARD_W and 0 <= p[1] < BOARD_H
+                    if (0 <= p[0] < self.W and 0 <= p[1] < self.H
                             and p not in blocked and p not in seen):
                         seen.add(p)
                         front.append(p)
@@ -329,7 +359,7 @@ class Run:
         return "Root port. [<] jack out with everything you carry."
 
     def can_enter(self, pos):
-        if not (0 <= pos[0] < BOARD_W and 0 <= pos[1] < BOARD_H):
+        if not (0 <= pos[0] < self.W and 0 <= pos[1] < self.H):
             return False
         if pos in self.walls or pos in self.junk:
             return False
@@ -350,7 +380,7 @@ class Run:
         tiles = set()
         for dx, dy in deltas:
             x, y = sx + dx, sy + dy
-            while 0 <= x < BOARD_W and 0 <= y < BOARD_H \
+            while 0 <= x < self.W and 0 <= y < self.H \
                     and not self.blocks_beam((x, y)):
                 tiles.add((x, y))
                 x, y = x + dx, y + dy
@@ -422,7 +452,7 @@ class Run:
             return
         self.spend("panic")
         self.player = self.rng.choice(
-            [(x, y) for x in range(BOARD_W) for y in range(BOARD_H)
+            [(x, y) for x in range(self.W) for y in range(self.H)
              if self.can_enter((x, y))])
         self.message = f"kernel panic — {self.loadout['panic']} left."
         self.resolve("you teleported into a hunter process.", moved=False)
@@ -629,6 +659,10 @@ class Run:
             self.files.discard(pos)
             self.carried += 1
             self.message = f"Paydata secured ({self.carried})."
+        if pos in self.creds_tiles:
+            self.creds_tiles.discard(pos)
+            self.creds_taken += 1
+            self.message = "Credits siphoned."
         # landing on the port ends nothing: descending and jacking out are
         # explicit choices (> / <), made while hunters keep coming
         if pos == self.port and self.ring > 0:
@@ -666,7 +700,7 @@ class Run:
         blocked = self.walls | self.gates | {s["pos"] for s in self.sentries}
 
         def open_tile(p):
-            return (0 <= p[0] < BOARD_W and 0 <= p[1] < BOARD_H
+            return (0 <= p[0] < self.W and 0 <= p[1] < self.H
                     and p not in blocked)
 
         arrivals = {}
@@ -720,8 +754,8 @@ class Run:
                 for dx in (-1, 0, 1):
                     for dy in (-1, 0, 1):
                         p = (x + dx, y + dy)
-                        if (p not in prev and 0 <= p[0] < BOARD_W
-                                and 0 <= p[1] < BOARD_H and p not in blocked):
+                        if (p not in prev and 0 <= p[0] < self.W
+                                and 0 <= p[1] < self.H and p not in blocked):
                             prev[p] = (x, y)
                             if p == goal:
                                 while prev[p] != start:
@@ -768,17 +802,41 @@ class Run:
             self.message = "TRACE 100% — they keep coming. Get out NOW."
 
     def edge_spawn_tiles(self):
-        return [(x, y) for x in range(BOARD_W) for y in range(BOARD_H)
-                if (x in (0, BOARD_W - 1) or y in (0, BOARD_H - 1))
+        return [(x, y) for x in range(self.W) for y in range(self.H)
+                if (x in (0, self.W - 1) or y in (0, self.H - 1))
                 and self.can_enter((x, y)) and (x, y) != self.player
                 and cheb((x, y), self.player) >= 4]
 
+    def vent_tile(self):
+        """Next scripted spawn tile, cycling; None if the room has no
+        vents or the next one is unusable this turn."""
+        if not self.vents:
+            return None
+        pos = self.vents[self._vent_next % len(self.vents)]
+        self._vent_next += 1
+        if pos == self.player or not self.can_enter(pos):
+            return None
+        return pos
+
     def spawn_wave(self, n):
+        if self.room:
+            # authored rooms: reinforcements are part of the design —
+            # they enter at marked vents, never at random edges
+            for _ in range(n):
+                pos = self.vent_tile()
+                if pos:
+                    self.hunters.add(pos)
+            return
         edges = self.edge_spawn_tiles()
         for pos in self.rng.sample(edges, min(n, len(edges))):
             self.hunters.add(pos)
 
     def spawn_killer(self):
+        if self.room:
+            pos = self.vent_tile()
+            if pos:
+                self.killers.add(pos)
+            return
         edges = self.edge_spawn_tiles()
         if edges:
             self.killers.add(self.rng.choice(edges))
@@ -800,11 +858,17 @@ def dispatch(run, key, aux=None):
         elif run.ring == 0:
             run.message = "Nothing runs deeper than ring 0."
         else:
-            return Run(level=run.level, ring=0, ice=run.next_ice,
-                       charges=run.loadout,
-                       seed=run.rng.randrange(10 ** 6),
-                       trace=run.trace, carried=run.carried,
-                       creds=run.creds_taken, intel=run.intel_found)
+            from rooms import room_for
+            args = dict(level=run.level, ring=0, ice=run.next_ice,
+                        charges=dict(run.loadout),
+                        seed=run.rng.randrange(10 ** 6),
+                        trace=run.trace, carried=run.carried,
+                        creds=run.creds_taken, intel=run.intel_found,
+                        room=room_for(run.next_ice))
+            new = Run(**args)
+            if args["room"]:
+                new.retry_args = args   # authored rooms reset like puzzles
+            return new
     elif key == "<":
         if run.player == run.port and run.port_open:
             run.jack_out()

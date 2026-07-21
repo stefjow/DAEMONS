@@ -99,6 +99,29 @@ pressure, they never hard-gate progress on a specific program. Starter pool
 | `honeyd` | Rich in `?` and `☠`; paydata plentiful, scanning near-mandatory. |
 | `tmpwatch` | Self-wiping floor: tiles you leave collapse N moves later. Backtracking rots. |
 
+**Authored rooms (the anti-randomness experiment).** Procedural boards
+make difficulty out of noise; authored rooms make it out of design. A
+room is an ASCII drawing (`rooms/*.txt`, format in `rooms.py`) wired in
+as a ring-0 vault for its ICE. The rules inside an authored room:
+
+- **Fully visible.** No `?`, no archives — paranoia lives at the campaign
+  layer, clarity inside the room. Hidden info decides whether you enter;
+  design decides whether you survive.
+- **Scripted vents, not random waves.** Trace thresholds spawn
+  reinforcements at marked vent tiles, in order — plannable pressure.
+  No vents, no reinforcements; the clock still seals the port.
+- **Free retries.** Dying in an authored room offers a reset to the
+  descent state, like a puzzle. Permadeath consequences stay at the
+  campaign layer. (Open question: should each retry tick the corp clock?)
+- **Machine-verified.** Every shipped room carries solver-proven solution
+  strings in `tests/test_rooms.py`: a scout line (port, no loot) and a
+  full-loot line — both found by exhaustive search over the deterministic
+  state space (`tools/room_solver.py`), so they hold for any loadout.
+- **Greed is depth of solution.** The scout line should be findable in a
+  minute; the full-loot line is the real puzzle (the kennel: 15 keys to
+  flee, 49 to leave with everything and the watchdog fried on its own
+  corp's sentry beam).
+
 ### 3.2 Board
 
 - Each ring is a procedurally generated grid — small and dense; a ring is

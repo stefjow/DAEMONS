@@ -115,6 +115,7 @@ class Run:
         self.creds_taken = creds
         self.over = None            # None = live, else end-of-run message
         self.won = False
+        self.via = None             # how the runner jacked out, once won
         if ring == 0:
             self.message = f"Ring 0 boots: {ice} — {ICE_POOL[ice]}."
         else:
@@ -369,6 +370,7 @@ class Run:
     def jack_out(self, how=None):
         if how is None:
             how = f"the ring {self.ring} port"
+        self.via = how
         self.won = True
         self.over = (f"JACKED OUT via {how} — {self.carried} file"
                      f"{'s' if self.carried != 1 else ''}, "

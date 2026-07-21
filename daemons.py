@@ -16,7 +16,8 @@ Runs are seeded and deterministic (§6).
 Run:  python3 daemons.py
 
 Code layout: game.py (rules engine, headless), ice.py (ring content &
-balance), ui.py (curses), tests/ (ring mechanics + exact-replay tests).
+balance), meta.py (campaign: city map, corp clocks, publish-or-fence),
+ui.py (curses), tests/ (mechanics + exact-replay tests).
 
 Movement (8-directional; z = y for QWERTZ; arrows for the cardinals):
       y k u     7 8 9
@@ -46,13 +47,18 @@ Programs (must be equipped, consume charges):
                     inlet ∩, second the outlet ∪
       sudo / stat are passive while equipped.
 
-      r   continue (after a run ends): next server if you jacked out,
-          back to server 1 if you flatlined
-      q   quit
+      space  continue after a run ends: to the safehouse if you jacked
+             out, back to the city map if you flatlined
+      q      quit
 
-Each server you jack out of leads to a deeper one — however shallow the
-run: a ring-1 skim keeps its loot too. Death sends you back to server 1
-with an empty bank.
+The campaign (DESIGN.md §5): the city map starts with one entry server
+per corp. Jacking out of a server reveals its connected servers — deeper,
+richer, nastier; backdoor escapes reveal secret edges two levels down.
+At the safehouse every haul is published (sets back that corp's project
+clock and exposes it — expose every corp to win) or fenced (creds for
+gear). Every run, however shallow, ticks every standing corp's clock:
+if any corp completes its project, the campaign is lost. Death wipes
+your bank but the map stays mapped.
 """
 
 import curses

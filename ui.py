@@ -7,8 +7,9 @@ the replay tests drive headless.
 
 import curses
 
+from meta import Campaign, CORPS, CLOCK_MAX, EXPOSURE_GOAL, FENCE_RATE
 from game import (
-    Run, dispatch, PROGRAMS, DEFAULT_LOADOUT, MOVES,
+    dispatch, PROGRAMS, DEFAULT_LOADOUT, MOVES,
     BOARD_W, BOARD_H, TRACE_MAX, MU_MAX,
     GLYPH_RUNNER, GLYPH_HUNTER, GLYPH_KILLER, GLYPH_JUNK, GLYPH_WALL,
     GLYPH_GATE, GLYPH_STATIC, GLYPH_FILE, GLYPH_CRED, GLYPH_TRAP,
@@ -116,8 +117,8 @@ def draw(scr, run, bank):
     if run.over:
         attr = curses.A_BOLD | (0 if run.won else curses.A_REVERSE)
         scr.addstr(oy + BOARD_H + 4, ox, run.over, attr)
-        nxt = (f"[r] jack into server {run.level + 1}" if run.won
-               else "[r] new runner, back to server 1")
+        nxt = ("[space] to the safehouse" if run.won
+               else "[space] back to the city — new runner")
         scr.addstr(oy + BOARD_H + 5, ox, f"{nxt}   [q] quit")
     elif run.player == run.port:
         # the boot banner: the descend-or-jack-out decision lives here
@@ -193,7 +194,7 @@ def show_loadout(scr, level, bank, chosen):
                        col("threat"))
             row += 1
         scr.addstr(row + 1, 2,
-                   "[letters] toggle   [enter] jack in   [q] quit",
+                   "[letters] toggle   [enter] jack in   [q] city map",
                    curses.A_DIM)
         scr.refresh()
 
@@ -236,52 +237,106 @@ def pick_target(scr, run, bank):
 
 MIN_ROWS = BOARD_H + 8
 MIN_COLS = BOARD_W + 4
+CITY_NODE_CAP = 12          # most recent targets shown on the map screen
 
 
-def main(scr):
-    curses.curs_set(0)
-    init_colors()
-    rows, cols = scr.getmaxyx()
-    if rows < MIN_ROWS or cols < MIN_COLS:
-        raise SystemExit(
-            f"daemons: terminal too small — need at least "
-            f"{MIN_COLS}x{MIN_ROWS}, got {cols}x{rows}.")
+# -- city map & safehouse ------------------------------------------------------
 
-    bank = 0
-    level = 1
-    chosen = list(DEFAULT_LOADOUT)
-    loadout = show_loadout(scr, level, bank, chosen)
-    if loadout is None:
-        return
-    run = Run(level=level, loadout=loadout)
-    intro_flash(scr, run, bank)
-
+def show_city(scr, campaign, notes=()):
+    """The between-runs screen: corp clocks, known servers, last events.
+    Returns the chosen node, or None to quit."""
+    letters = "abcdefghijkl"
     while True:
-        draw(scr, run, bank + (run.carried + run.creds_taken
-                               if run.won else 0))
+        scr.erase()
+        scr.addstr(1, 2, "DAEMONS — CITY MAP", curses.A_BOLD)
+        scr.addstr(1, 24, f"BANK {campaign.bank}", curses.A_DIM)
+        for i, corp in enumerate(CORPS):
+            c, e = campaign.clock[corp], campaign.exposure[corp]
+            if campaign.fallen(corp):
+                line = f"{corp:<5} FALLEN — servers dark"
+                attr = curses.A_DIM
+            else:
+                line = (f"{corp:<5} [{'#' * c}{'-' * (CLOCK_MAX - c)}] "
+                        f"{c:2d}/{CLOCK_MAX}   exposure {e}/{EXPOSURE_GOAL}")
+                attr = col("threat") if c >= CLOCK_MAX - 3 else 0
+            scr.addstr(3 + i, 2, line, attr)
+
+        targets = campaign.targets()[-CITY_NODE_CAP:]
+        for i, node in enumerate(targets):
+            raided = f"  raided ×{node.raided}" if node.raided else ""
+            line = (f"[{letters[i]}] {node.name:<18} depth {node.level}  "
+                    f"rumor: {node.rumor}?{raided}")
+            scr.addstr(7 + i, 2, line)
+        note_row = 8 + len(targets)
+        for i, note in enumerate(list(notes)[-4:]):
+            scr.addstr(note_row + i, 2, note[:BOARD_W + 38], curses.A_DIM)
+        scr.addstr(note_row + min(len(notes), 4) + 1, 2,
+                   "[letter] jack in   [q] quit", curses.A_DIM)
+        scr.refresh()
+
+        key = scr.get_wch()
+        if key == "q":
+            return None
+        if isinstance(key, str) and key in letters[:len(targets)]:
+            return targets[letters.index(key)]
+
+
+def safehouse(scr, campaign, node, run):
+    """Publish-or-fence (DESIGN §5): every stolen file is campaign
+    progress or gear money, never both. Returns event lines."""
+    if not run.carried:
+        return campaign.end_run(node, run, publish=False)
+    while True:
+        scr.erase()
+        scr.addstr(1, 2, "SAFEHOUSE", curses.A_BOLD)
+        scr.addstr(3, 2, f"Haul from {node.name}: {run.carried} files, "
+                         f"{run.creds_taken} creds.")
+        scr.addstr(5, 2, f"[p] publish — {node.corp} clock -{run.carried}, "
+                         f"exposure +{run.carried}")
+        scr.addstr(6, 2, f"[f] fence   — +{run.carried * FENCE_RATE} creds")
+        scr.addstr(8, 2, "Every cred you take is campaign progress you sold.",
+                   curses.A_DIM)
+        scr.refresh()
+        key = scr.get_wch()
+        if key in ("p", "f"):
+            return campaign.end_run(node, run, publish=(key == "p"))
+
+
+def show_finale(scr, campaign, notes):
+    """Campaign over. Returns True to start a new campaign."""
+    won = campaign.result == "won"
+    while True:
+        scr.erase()
+        scr.addstr(1, 2, "THE CORPS FALL" if won else "PROJECT COMPLETE",
+                   curses.A_BOLD | (0 if won else curses.A_REVERSE))
+        for i, note in enumerate(list(notes)[-4:]):
+            scr.addstr(3 + i, 2, note[:BOARD_W + 38])
+        scr.addstr(8, 2, "[n] new campaign   [q] quit", curses.A_DIM)
+        scr.refresh()
+        key = scr.get_wch()
+        if key == "n":
+            return True
+        if key == "q":
+            return False
+
+
+def play_run(scr, run, campaign):
+    """Drive one run to its end screen. Returns the run, or None on quit."""
+    while True:
+        draw(scr, run, campaign.bank)
         key = scr.get_wch()
         key = ARROWS.get(key, key)
         if key == "q":
-            return
+            return None
         if run.over:
-            if key == "r":
-                if run.won:
-                    bank += run.carried + run.creds_taken
-                    level += 1
-                else:
-                    bank = 0
-                    level = 1
-                loadout = show_loadout(scr, level, bank, chosen)
-                if loadout is None:
-                    return
-                run = Run(level=level, loadout=loadout)
-                intro_flash(scr, run, bank)
+            if key in (" ", "r", "\n", "\r"):
+                return run
             continue
         turn_before = run.turn
         prev = run
         if key == "c":
             if run.has("ssh"):
-                target = pick_target(scr, run, bank)
+                target = pick_target(scr, run, campaign.bank)
                 if target:
                     run = dispatch(run, "c", target)
             else:
@@ -289,7 +344,7 @@ def main(scr):
         elif key == "d":
             if run.has("rm -rf"):
                 run.message = "rm -rf: which direction?"
-                draw(scr, run, bank)
+                draw(scr, run, campaign.bank)
                 dkey = scr.get_wch()
                 dkey = ARROWS.get(dkey, dkey)
                 if dkey in MOVES:
@@ -301,6 +356,42 @@ def main(scr):
         else:
             run = dispatch(run, key)
         if run is not prev:
-            intro_flash(scr, run, bank)      # descended: ring 0 boots
+            intro_flash(scr, run, campaign.bank)   # descended: ring 0 boots
         elif run.turn != turn_before and not run.over:
-            hunter_pulse(scr, run, bank)
+            hunter_pulse(scr, run, campaign.bank)
+
+
+def main(scr):
+    curses.curs_set(0)
+    init_colors()
+    rows, cols = scr.getmaxyx()
+    if rows < MIN_ROWS or cols < MIN_COLS:
+        raise SystemExit(
+            f"daemons: terminal too small — need at least "
+            f"{MIN_COLS}x{MIN_ROWS}, got {cols}x{rows}.")
+
+    campaign = Campaign()
+    chosen = list(DEFAULT_LOADOUT)
+    notes = ("The corps build. You leak. Pick a server.",)
+    while True:
+        node = show_city(scr, campaign, notes)
+        if node is None:
+            return
+        loadout = show_loadout(scr, node.level, campaign.bank, chosen)
+        if loadout is None:
+            continue                    # back to the city map
+        run = campaign.start_run(node, loadout)
+        intro_flash(scr, run, campaign.bank)
+        run = play_run(scr, run, campaign)
+        if run is None:
+            return
+        if run.won:
+            notes = safehouse(scr, campaign, node, run)
+        else:
+            notes = campaign.end_run(node, run)
+        if campaign.result:
+            if not show_finale(scr, campaign, notes):
+                return
+            campaign = Campaign()
+            chosen = list(DEFAULT_LOADOUT)
+            notes = ("A new campaign. The corps never sleep.",)

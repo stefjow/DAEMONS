@@ -54,6 +54,10 @@ Programs (must be equipped, consume charges):
 The campaign (DESIGN.md §5): the city map starts with one entry server
 per corp. Jacking out of a server reveals its connected servers — deeper,
 richer, nastier; backdoor escapes reveal secret edges two levels down.
+A server's ICE shows as `?` on the map until earned: read its boot
+banner yourself (you keep that even if you die), jack out with a looted
+intel file `i` (decrypts at the safehouse, names another server's ICE),
+or pay the fixer on the city screen.
 At the safehouse every haul is published (sets back that corp's project
 clock and exposes it — expose every corp to win) or fenced (creds for
 gear). Every run, however shallow, ticks every standing corp's clock:

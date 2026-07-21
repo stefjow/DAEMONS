@@ -28,21 +28,74 @@ def dead_run(node):
 
 def test_campaign_is_seed_deterministic():
     a, b = meta.Campaign(seed=5), meta.Campaign(seed=5)
-    assert [(n.name, n.level, n.seed, n.rumor) for n in a.known] \
-        == [(n.name, n.level, n.seed, n.rumor) for n in b.known]
+    assert [(n.name, n.level, n.seed, n.ice) for n in a.known] \
+        == [(n.name, n.level, n.seed, n.ice) for n in b.known]
 
 
 def test_starts_with_one_entry_node_per_corp():
     c = meta.Campaign(seed=5)
     assert sorted(n.corp for n in c.known) == sorted(meta.CORPS)
     assert all(n.level == 1 for n in c.known)
+    assert not any(n.known for n in c.known), "no free intel on the map"
 
 
-def test_honest_rumors_match_the_boot_banner():
+def test_node_ice_matches_the_boot_banner():
     c = meta.Campaign(seed=5)
-    hits = sum(n.rumor == game.Run(seed=n.seed).next_ice
-               for n in (c.new_node(corp, 1) for corp in meta.CORPS * 20))
-    assert hits >= 30, "rumors should be honest most of the time"
+    for node in c.known:
+        assert node.ice == game.Run(seed=node.seed).next_ice
+
+
+def test_reading_the_banner_survives_even_death():
+    c = meta.Campaign(seed=5)
+    node = c.known[0]
+    run = dead_run(node)
+    run.banner_seen = True
+    c.end_run(node, run)
+    assert node.known
+
+    other = c.known[1]
+    c.end_run(other, dead_run(other))       # died before the port
+    assert not other.known
+
+
+def test_looted_intel_decrypts_on_jack_out_only():
+    c = meta.Campaign(seed=5)
+    node = c.known[0]
+    node.spawned = True                     # keep the map fixed
+    run = won_run(node, carried=0)
+    run.intel_found = 2
+    events = c.end_run(node, run, publish=False)
+    assert sum(n.known for n in c.known) == 2
+    assert sum("Intel decrypted" in e for e in events) == 2
+
+    run = dead_run(c.known[1])
+    run.intel_found = 3                     # carried down, never exfiltrated
+    c.end_run(c.known[1], run)
+    assert sum(n.known for n in c.known) == 2
+
+
+def test_stale_intel_fences_for_a_cred():
+    c = meta.Campaign(seed=5)
+    node = c.known[0]
+    node.spawned = True
+    for n in c.known:
+        n.known = True
+    run = won_run(node, carried=0, creds=0)
+    run.intel_found = 1
+    events = c.end_run(node, run, publish=False)
+    assert c.bank == 1
+    assert any("stale" in e for e in events)
+
+
+def test_the_fixer_sells_intel():
+    c = meta.Campaign(seed=5)
+    node = c.known[0]
+    assert "short" in c.buy_intel(node)     # broke: no sale
+    c.bank = meta.INTEL_PRICE
+    msg = c.buy_intel(node)
+    assert node.known and node.ice in msg
+    assert c.bank == 0
+    assert "already know" in c.buy_intel(node)
 
 
 def test_jacking_out_grows_the_map_and_ticks_clocks():

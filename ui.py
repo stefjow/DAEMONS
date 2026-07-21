@@ -7,14 +7,15 @@ the replay tests drive headless.
 
 import curses
 
-from meta import Campaign, CORPS, CLOCK_MAX, EXPOSURE_GOAL, FENCE_RATE
+from meta import (Campaign, CORPS, CLOCK_MAX, EXPOSURE_GOAL, FENCE_RATE,
+                  INTEL_PRICE)
 from game import (
     dispatch, PROGRAMS, DEFAULT_LOADOUT, MOVES,
     BOARD_W, BOARD_H, TRACE_MAX, MU_MAX,
     GLYPH_RUNNER, GLYPH_HUNTER, GLYPH_KILLER, GLYPH_JUNK, GLYPH_WALL,
     GLYPH_GATE, GLYPH_STATIC, GLYPH_FILE, GLYPH_CRED, GLYPH_TRAP,
     GLYPH_DOOR, GLYPH_HIDDEN, GLYPH_PORT, GLYPH_TUNNEL, GLYPH_ARCHIVE,
-    GLYPH_FIFO_IN, GLYPH_FIFO_OUT,
+    GLYPH_FIFO_IN, GLYPH_FIFO_OUT, GLYPH_INTEL,
 )
 
 # curses key codes -> the plain keys the engine understands
@@ -72,7 +73,8 @@ def draw(scr, run, bank):
         put(p, GLYPH_FILE, col("loot", curses.A_BOLD))
     for p, kind in run.revealed.items():
         glyph = {"file": GLYPH_FILE, "cred": GLYPH_CRED,
-                 "trap": GLYPH_TRAP, "door": GLYPH_DOOR}[kind]
+                 "trap": GLYPH_TRAP, "door": GLYPH_DOOR,
+                 "intel": GLYPH_INTEL}[kind]
         name = "threat" if kind == "trap" else "loot"
         put(p, glyph, col(name, curses.A_BOLD))
     for p, kind in run.archives.items():
@@ -243,9 +245,11 @@ CITY_NODE_CAP = 12          # most recent targets shown on the map screen
 # -- city map & safehouse ------------------------------------------------------
 
 def show_city(scr, campaign, notes=()):
-    """The between-runs screen: corp clocks, known servers, last events.
-    Returns the chosen node, or None to quit."""
+    """The between-runs screen: corp clocks, known servers, last events,
+    and the fixer. Returns the chosen node, or None to quit."""
     letters = "abcdefghijkl"
+    buying = False
+    fixer_line = ""
     while True:
         scr.erase()
         scr.addstr(1, 2, "DAEMONS — CITY MAP", curses.A_BOLD)
@@ -263,20 +267,45 @@ def show_city(scr, campaign, notes=()):
 
         targets = campaign.targets()[-CITY_NODE_CAP:]
         for i, node in enumerate(targets):
+            ice = node.ice if node.known else "?"
             raided = f"  raided ×{node.raided}" if node.raided else ""
             line = (f"[{letters[i]}] {node.name:<18} depth {node.level}  "
-                    f"rumor: {node.rumor}?{raided}")
-            scr.addstr(7 + i, 2, line)
+                    f"ice: {ice}{raided}")
+            scr.addstr(7 + i, 2, line,
+                       0 if node.known else col("unknown"))
         note_row = 8 + len(targets)
         for i, note in enumerate(list(notes)[-4:]):
             scr.addstr(note_row + i, 2, note[:BOARD_W + 38], curses.A_DIM)
-        scr.addstr(note_row + min(len(notes), 4) + 1, 2,
-                   "[letter] jack in   [q] quit", curses.A_DIM)
+        prompt_row = note_row + min(len(notes), 4) + 1
+        if fixer_line:
+            scr.addstr(prompt_row, 2, fixer_line[:BOARD_W + 38],
+                       curses.A_BOLD)
+            prompt_row += 1
+        prompt = ("fixer: intel on which server? [letter] / [esc] never mind"
+                  if buying else
+                  f"[letter] jack in   [i] buy intel ({INTEL_PRICE} creds)"
+                  f"   [q] quit")
+        scr.addstr(prompt_row, 2, prompt, curses.A_DIM)
         scr.refresh()
 
         key = scr.get_wch()
+        if buying:
+            buying = False
+            if (isinstance(key, str) and key in letters[:len(targets)]):
+                fixer_line = campaign.buy_intel(targets[letters.index(key)])
+            continue
         if key == "q":
             return None
+        if key == "i":
+            if all(n.known for n in targets):
+                fixer_line = "Fixer: nothing left to sell you here."
+            elif campaign.bank < INTEL_PRICE:
+                fixer_line = (f"Fixer wants {INTEL_PRICE} creds. "
+                              f"You're short.")
+            else:
+                buying = True
+                fixer_line = ""
+            continue
         if isinstance(key, str) and key in letters[:len(targets)]:
             return targets[letters.index(key)]
 

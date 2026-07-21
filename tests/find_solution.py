@@ -64,6 +64,8 @@ def solve(seed, deep):
         keys.append(key)
         run = d.dispatch(run, key)
         if run.won:
+            if deep and run.ring != 0:
+                return None     # backdoor fluke: doesn't test the descent
             return "".join(keys), run
     return None
 

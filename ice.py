@@ -20,7 +20,7 @@ def ring0_spec(ice):
     """What an ICE identity does to ring 0's generation and rules."""
     spec = {"hunters": 4, "trace_mult": 1,
             "kinds": ["file", "file", "file", "cred", "cred",
-                      "trap", "trap"]}
+                      "trap", "trap", "intel"]}
     if ice == "crond":
         spec["hunters"] = 6
     elif ice == "auditd":

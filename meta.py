@@ -16,7 +16,7 @@ CORPS = ("KERN", "INIT", "LIBC")
 CLOCK_MAX = 15              # a corp finishing its project = campaign loss
 EXPOSURE_GOAL = 6           # published files needed to take a corp down
 FENCE_RATE = 2              # creds per fenced file
-RUMOR_TRUTH = 0.7           # how often a node's ICE rumor is honest
+INTEL_PRICE = 3             # what the fixer charges to name a node's ICE
 
 HOSTS = ("darkstar", "mailhub", "ns1", "wopr", "buildfarm", "printq",
          "relay", "vault0", "timeshare", "devnull", "swapfile", "lpd",
@@ -24,14 +24,17 @@ HOSTS = ("darkstar", "mailhub", "ns1", "wopr", "buildfarm", "printq",
 
 
 class Node:
-    """One corp server on the city map."""
+    """One corp server on the city map. Its ring-0 ICE (`ice`) is the
+    truth, but the map only shows it once `known` — earned by reading
+    the boot banner, decrypting looted intel, or paying the fixer."""
 
-    def __init__(self, corp, host, level, seed, rumor):
+    def __init__(self, corp, host, level, seed, ice):
         self.corp = corp
         self.host = host
         self.level = level
         self.seed = seed        # fixed: revisiting a node replays its board
-        self.rumor = rumor      # ring 0 ICE, RUMOR_TRUTH of the time
+        self.ice = ice
+        self.known = False
         self.raided = 0
         self.spawned = False    # children revealed yet?
 
@@ -59,12 +62,20 @@ class Campaign:
         host = (self.hosts_left.pop(self.rng.randrange(len(self.hosts_left)))
                 if self.hosts_left else f"node{self.rng.randrange(100)}")
         seed = self.rng.randrange(10 ** 6)
-        # mirror of Run.__init__'s first rng draw, so an honest rumor is
-        # exactly what the boot banner will say (see test_campaign)
-        truth = random.Random(seed).choice(sorted(ICE_POOL))
-        rumor = (truth if self.rng.random() < RUMOR_TRUTH
-                 else self.rng.choice(sorted(ICE_POOL)))
-        return Node(corp, host, level, seed, rumor)
+        # mirror of Run.__init__'s first rng draw, so intel and the boot
+        # banner always agree (see test_campaign)
+        ice = random.Random(seed).choice(sorted(ICE_POOL))
+        return Node(corp, host, level, seed, ice)
+
+    def buy_intel(self, node):
+        """The fixer names a node's ring-0 ICE, for a price."""
+        if node.known:
+            return f"You already know {node.name}'s stack."
+        if self.bank < INTEL_PRICE:
+            return f"Fixer wants {INTEL_PRICE} creds. You're short."
+        self.bank -= INTEL_PRICE
+        node.known = True
+        return f"Fixer: {node.name} ring 0 runs {node.ice}."
 
     def fallen(self, corp):
         return self.exposure[corp] >= EXPOSURE_GOAL
@@ -81,6 +92,11 @@ class Campaign:
         Returns human-readable event lines for the city screen."""
         node.raided += 1
         events = []
+
+        # reading the boot banner can't be undone, not even by dying:
+        # the player saw ring 0's ICE with their own eyes
+        if run.ring == 0 or run.banner_seen:
+            node.known = True
 
         if run.won:
             if publish and run.carried:
@@ -113,6 +129,21 @@ class Campaign:
                 self.known.append(secret)
                 events.append(f"Backdoor intel: secret edge to "
                               f"{secret.name} (depth {secret.level}).")
+
+            # looted intel files decrypt now — each names another
+            # server's ICE, this corp's network first
+            for _ in range(run.intel_found):
+                pool = ([n for n in self.known
+                         if not n.known and n.corp == node.corp]
+                        or [n for n in self.known if not n.known])
+                if pool:
+                    hit = self.rng.choice(pool)
+                    hit.known = True
+                    events.append(f"Intel decrypted: {hit.name} ring 0 "
+                                  f"runs {hit.ice}.")
+                else:
+                    self.bank += 1
+                    events.append("Intel was stale — fenced for 1 cred.")
         else:
             self.bank = 0
             events.append("Runner flatlined. A new one picks up the deck — "

@@ -52,6 +52,7 @@ GLYPH_TUNNEL = "∩"
 GLYPH_ARCHIVE = "≡"
 GLYPH_FIFO_IN = "∩"
 GLYPH_FIFO_OUT = "∪"
+GLYPH_INTEL = "i"
 
 # program name -> (hotkey, MU, charges per run; None = unlimited/passive)
 PROGRAMS = {
@@ -96,7 +97,7 @@ class Run:
 
     def __init__(self, level=1, ring=1, ice="crond", next_ice=None,
                  loadout=DEFAULT_LOADOUT, charges=None, seed=None,
-                 trace=0, carried=0, creds=0):
+                 trace=0, carried=0, creds=0, intel=0):
         if seed is None:
             seed = random.randrange(10 ** 6)
         self.seed = seed
@@ -116,6 +117,8 @@ class Run:
         self.over = None            # None = live, else end-of-run message
         self.won = False
         self.via = None             # how the runner jacked out, once won
+        self.intel_found = intel    # intel files carried; decrypt on jack-out
+        self.banner_seen = False    # stood on the down-port: can't unsee it
         if ring == 0:
             self.message = f"Ring 0 boots: {ice} — {ICE_POOL[ice]}."
         else:
@@ -218,6 +221,8 @@ class Run:
                 kinds = ["file", "file", "cred", "trap"]
                 if self.level >= 3:
                     kinds.append("trap")
+                if rng.random() < 0.4:
+                    kinds.append("intel")
             if rng.random() < 0.35:
                 kinds.append("door")
             self.hidden = {}
@@ -614,6 +619,9 @@ class Run:
             self.step_hunters()      # the stumble: hunters get a free step
             if self.over:
                 return
+        elif kind == "intel":
+            self.intel_found += 1
+            self.message = "Server intel siphoned — decrypts at the safehouse."
         elif kind == "door":
             return self.jack_out("a backdoor")
 
@@ -623,6 +631,8 @@ class Run:
             self.message = f"Paydata secured ({self.carried})."
         # landing on the port ends nothing: descending and jacking out are
         # explicit choices (> / <), made while hunters keep coming
+        if pos == self.port and self.ring > 0:
+            self.banner_seen = True
 
         self.world_step()
 
@@ -794,7 +804,7 @@ def dispatch(run, key, aux=None):
                        charges=run.loadout,
                        seed=run.rng.randrange(10 ** 6),
                        trace=run.trace, carried=run.carried,
-                       creds=run.creds_taken)
+                       creds=run.creds_taken, intel=run.intel_found)
     elif key == "<":
         if run.player == run.port and run.port_open:
             run.jack_out()

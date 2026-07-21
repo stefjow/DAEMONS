@@ -75,9 +75,10 @@ toward ring 0, jack out with what you dared to carry.
   never sucker-punches you after you have.
 - **Depth is public, identity is secret.** The city map shows how deep a
   stack goes; what runs on each ring is learned by descending to its door,
-  or bought as intel at the repo (§5). Information is earned by depth —
-  the natural first visit to a scary server is a *scouting run*: crack the
-  outer ring, read the next banner, jack out and rig accordingly.
+  looted as intel files from other servers, or bought at the repo (§5).
+  Information is earned by depth — the natural first visit to a scary
+  server is a *scouting run*: crack the outer ring, read the next banner,
+  jack out and rig accordingly.
 - **Loot on every ring.** Paydata gets steeply richer toward ring 0 — the
   vault is `/root` — but a ring-1 skim always pays *something*. A shallow
   jack-out is a result, not a failure.
@@ -231,8 +232,10 @@ Keep this thin in v1 — the run loop must be fun naked first.
   jacking out of one reveals its connected servers (deeper, richer,
   nastier). Backdoor `◊` escapes reveal *secret edges* — shortcuts to
   servers you couldn't otherwise reach. The map draws itself as you play.
-  Each node shows its **stack depth**; ring identities are rumor-level at
-  best ("ring 1 is rumored `watchdogd`") until scouted or bought.
+  Each node shows its **stack depth**; ring identities show as `?` until
+  *earned* — scout the boot banner yourself, decrypt an intel file looted
+  from another server, or pay the fixer. No free rumors: information is
+  loot.
 - **Corp clock:** each corp advances its flagship project by 1 tick per
   player run — *every* run, however shallow. The clock is the run fee:
   a safe ring-1 skim still spends campaign time, the one currency you
